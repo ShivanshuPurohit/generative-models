@@ -362,3 +362,87 @@ class SynthesisNetwork(nn.Module):
                                dtype=self.dtype,
                                rng=self.rng)(x, y, dlatents_in)
         return y
+
+
+class Generator(nn.Module):
+    """
+    Generator
+    Attributes:
+        resolution (int): resolution
+        num_channels (int): number of output color channels
+        z_dim (int): Input latent Z dimensionality
+        w_dim (int): Intermediate latent W dimensionality
+        mapping_layer_features (int): Number of intermediate features in mapping layers
+        mapping_embed_features (int): Label embedding dimensionality
+        num_ws (int): Number of intermediate latents to output
+        num_mapping_layers (int): Number of mapping layers
+        fmap_base (int): Overall multiplier for the number of feature maps
+        fmap_decay (int): Log2 feature map reduction when doubling the resolution
+        fmap_min (int): Min number of feature maps in a layer
+        fmap_max (int): Max number of feature maps in a layer
+        fmap_const (int): Number of feature maps in const input layer
+        use_noise (bool): if True, add spatial-specific noise
+        randomize_noise (bool): if True, use random noise
+        activation (str): activation function
+        w_avg_beta (float): decay for tracking moving avg of W during training
+    """
+    resolution: int = 1024
+    num_channels: int = 3
+    z_dim: int = 512
+    w_dim: int = 512
+    mapping_layer_features: int = 512
+    mapping_embed_features: int = None
+    num_ws: int = 18
+    num_mapping_layers: int = 8
+    use_noise: bool = True
+    randomize_noise: bool = True
+    w_avg_beta: float = 0.995
+    activation: str = 'leaky_relu'
+    resample_kernel: Tuple = (1, 3, 3, 1)
+    fused_modconv: bool = False
+    dtype: str = 'float32'
+    rng: Any = random.PRNGKey(42)
+
+    @nn.compact
+    def __call__(self, z, truncation_psi=1, truncation_cutoff=None, skip__avg_update=False, train=True):
+        """
+        Run Generator
+        Args:
+            z: input noise, shape [N, z_dim]
+            truncation_psi (float): controls truncation, 1 means off
+            truncation_cutoff (int): controls truncation, None means off
+            skip_w_avg_update (bool): if True, updates the ema of W
+            train (bool): training flag
+        Returns:
+            (tensor): image of shape [N, H, W, num_channels] 
+        """
+        dlatents_in = MappingNetwork(z_dim=self.z_dim,
+                                     w_dim=self.w_dim,
+                                     num_ws=self.num_ws,
+                                     num_layers=self.num_mapping_layers,
+                                     embed_features=self.mapping_embed_features,
+                                     layer_features=self.mapping_layer_features,
+                                     activation=self.activation,
+                                     lr_multiplier=self.lr_multiplier,
+                                     w_avg_beta=self.w_avg_beta,
+                                     param_dict=self.param_dict['mapping_network'] if self.param_dict is not None else None,
+                                     dtype=self.dtype,
+                                     rng=self.rng)(z, truncation_psi, truncation_cutoff, skip__avg_update, train)
+        
+        x = SynthesisLayer(resolution=self.resolution,
+                           num_channels=self.num_channels,
+                           w_dim=self.w_dim,
+                           fmap_base=self.fmap_base,
+                           fmap_decay=self.fmap_decay,
+                           fmap_min=self.fmap_min,
+                           fmap_max=self.fmap_max,
+                           fmap_const=self.fmap_const,
+                           param_dict=self.param_dict['synthesis_network'] if self.param_dict is not None else None,
+                           activation=self.activation,
+                           resample_kernel=self.resample_kernel,
+                           randomize_noise=self.randomize_noise,
+                           fused_modconv=self.fused_modconv,
+                           dtype=self.dtype,
+                           rng=self.rng)(dlatents_in)
+        
+        return x

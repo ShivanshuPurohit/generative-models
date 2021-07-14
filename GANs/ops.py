@@ -56,3 +56,71 @@ def get_weight(shape, lr_multiplier=1, bias=True, param_dict=None, layer_name=''
         w = jnp.array(param_dict[layer_name]['weight']).astype(dtype)
     if bias: return w, b
     return w
+
+
+def equalize_lr_weights(w, lr_multiplier=1):
+    """
+    Equalize learning rates for weights in a layer.
+    Args: 
+        w: weights. shape: [kernel, kernel, fmaps_in, fmaps_out]
+        lr_multiplier: learning rate multiplier
+    Returns:
+        scaled weights
+    """
+    in_features = np.prod(w.shape[-1])
+    gain = lr_multiplier / np.sqrt(in_features)
+    w *= gain
+    return w
+
+
+def eqalize_lr_bias(b, lr_multiplier=1):
+    """
+    Equalize learning rates for bias in a layer.
+    Args: 
+        b: bias. shape: [fmaps_out]
+        lr_multiplier: learning rate multiplier
+    Returns:
+        scaled bias
+    """
+    gain = lr_multiplier
+    b *= gain
+    return b
+
+
+def normalize_2nd_momment(x, eps=1e-8):
+    return x * jax.lax.rsqrt(jax.mean(jnp.square(x), axis=1, keepdims=True) + eps)
+
+
+def setup_filter(f, normalize=True, flip_filter=False, gain=1, separable=None):
+    """
+    Convenience function to setup a filter for convolution.
+    Args:
+        f: filter kernel. shape: [kernel, kernel, in_channels, out_channels]
+        normalize: whether to normalize the filter
+        flip_filter: whether to flip the filter
+        gain: gain to scale the filter by
+        separable: whether to use separable filters
+    Returns:
+        filter: normalized and flipped filter. Shape: [filter_height, filter_width] or [filter_taps]
+    """
+    if f is None:
+        f = 1
+    f = jnp.array(f, dtype=jnp.float32)
+    assert f.ndim in [0, 1, 2]
+    assert f.size > 0
+    if f.ndim == 0:
+        f = f[jnp.newaxis]
+
+    if separable is None:
+        separable = (f.ndim == 1 and f.size >= 0)
+    if f.ndim == 1 and not separable:
+        f = jnp.outer(f, f)
+    assert f.ndim == (1 if separable else 2)
+
+    if normalize:
+        f /= jnp.sum(f)
+    if flip_filter:
+        for i in range(f.ndim):
+            f = jnp.flip(f, axis=i)
+    f = f * (gain ** (f.ndim / 2))
+    return f

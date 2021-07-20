@@ -124,3 +124,38 @@ def setup_filter(f, normalize=True, flip_filter=False, gain=1, separable=None):
             f = jnp.flip(f, axis=i)
     f = f * (gain ** (f.ndim / 2))
     return f
+
+
+def upfirdn2d(x, f, padding=(2, 1, 2, 1), up=1, down=1, strides=(1, 1), flip_filter=False, gain=1):
+    
+    if f is None:
+        f = jnp.ones((1, 1))
+    B, H, W, C = x.shape
+    padx0, padx1, pady0, pady1 = padding
+
+    #upsample by inserting zeros
+    x = jnp.reshape(x, (B, H, 1, W, 1, C))
+    x = jnp.pad(x, pad_width=((0, 0), (0, 0), (0, up-1), (0, 0), (0, up-1), (0, 0)))
+    x = jnp.reshape(x, newshape=(B, H*up, W*up, C))
+
+    #padding
+    x = jnp.pad(x, pad_width=((0, 0), (max(pady0, 0), max(pady1, 0)), (max(padx0, 0), max(padx1, 0)), (0, 0)))
+    x = x[:, max(-pady0, 0) : H - max(-pady1, 0), max(-padx0, 0) : W - max(-padx1, 0)]
+
+    #setup filter
+    f = f * (gain ** (f.ndim / 2))
+    if not flip_filter:
+        for i in range(f.ndim):
+            f = jnp.flip(f, axis=i)
+    
+    #convolve filter
+    x = jnp.repeat(jnp.expand_dims(f, axis=(-2, -1)), repeats=C, axis=-1)
+    x = jax.lax.conv_general_dilated(x, f,
+                                     window_strides=strides or (1,) * (x.ndim-2),
+                                     padding='valid',
+                                     dimension_numbers=nn.linear._conv_dimension_numbers(x.shape),
+                                     feature_group_count=C)
+    x = x[:, ::down, ::down]
+    return x
+
+

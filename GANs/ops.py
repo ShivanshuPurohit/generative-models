@@ -262,3 +262,68 @@ def conv_downsample_2d(x, w, k=None, factor=2, gain=1, padding=0):
     return x
 
 
+def upsample_conv_2d(x, w, k=None, factor=2, gain=1, padding=0):
+    """Fused upsample convolution.
+    Padding is performed only at beginning, not between operations.
+    The fused op is more efficient than performing the same calculation
+    using tf ops. It supports gradients of arbitrary order.
+    
+    Args:
+        x (tensor): Input of shape [N, H, W, C].
+        w (tensor): Weight of shape [filterH, filterW, inChannels, outChannels].
+                    grouped conv can be performed by inChannels = x.shape[0] // numGroups.
+        k (tensor): FIR filter of shape [firH, firW] or [firN].
+        factor (int): Downsample factor.
+        gain (float): Scaling factor for signal magnitude.
+        padding (int): Number of pixels to pad on each side.
+    
+    Returns:
+        (tensor): Output of shape [N, H // factor, W // factor, C].
+    """
+    assert isinstance(factor, int) and factor >= 1, 'factor must be an integer >= 1'
+    assert isinstance(padding, int), 'padding must be an integer'
+
+    # check weight shape.
+    ch, cw, _intC, _outC = w.shape
+    inC = w.shape[2]
+    outC = w.shape[3]
+    assert ch == cw
+    # fast path for 1x1 convolution.
+    if cw == 1 and ch == 1:
+        x = jax.lax.conv_general_dilated(x, w,
+                                         window_strides=(factor, factor),
+                                         padding='VALID',
+                                         dimension_numbers=nn.Linear._conv_dimension_numbers(x.shape))
+        k = setup_filter(k, gain=gain*(factor**2))
+        pad0 = (k.shape[0] + factor - cw) // 2 + padding
+        pad1 = (k.shape[0] + factor) // 2 + padding
+        x = upfirdn2d(x, f=k, up=factor, pad=(pad0, pad1, pad0, pad1))
+        return x
+    
+    # setup filter kernel.
+    k = setup_filter(k, gain=gain*(factor**2))
+    assert k.shape[0] == k.shape[1]
+
+    # determine data dimensions.
+    stride = (factor, factor)
+    output_shape = ((x.shape[1] - 1) * factor + ch, (x.shape[2] - 1) * factor + cw)
+    num_groups = x.shape[3] // inC
+
+    # Transpose weights.
+    w = jnp.reshape(w, (ch, cw, inC, num_groups, -1))
+    w = jnp.transpose(w[::-1, ::-1], (0, 1, 4, 3, 2))
+    w = jnp.reshape(w, (ch, cw, -1, inC * num_groups))
+
+    # execute.
+    x = gradient_based_conv_transpose(lhs=x,
+                                      rhs=w,
+                                      strides=stride,
+                                      padding='VALID',
+                                      output_padding=(0, 0, 0, 0),
+                                      output_shape=output_shape)
+    pad0 = (k.shape[0] + factor - cw) // 2 + padding
+    pad1 = (k.shape[0] + factor - cw + 3) // 2 + padding
+    x = upfirdn2d(x, f=k, pad=(pad0, pad1, pad0, pad1))
+    return x
+
+

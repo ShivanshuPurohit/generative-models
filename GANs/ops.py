@@ -159,3 +159,62 @@ def upfirdn2d(x, f, padding=(2, 1, 2, 1), up=1, down=1, strides=(1, 1), flip_fil
     return x
 
 
+class LinearLayer(nn.Module):
+    """Linear Layer.
+    Attributes:
+        in_features (int): Input dim.
+        out_features (int): Output dim.
+        use_bias (bool): If True, use bias.
+        bias_init (int): Bias init.
+        lr_multiplier (float): lr multiplier.
+        activation (str): Activation function.
+        param_dict (h5py.Group): Param dict with pretrained params.
+        layer_name (str): layer name.
+        dtype (str): data type.
+        rng (jax.random.PRNGKey): Random seed.
+    """
+    in_features: int
+    out_features: int
+    use_bias: bool = True
+    bias_init: int = 0
+    lr_multiplier: float = 1
+    activation: str = 'linear'
+    param_dict: Optional[h5py.Group] = None
+    layer_name: str = 'linear'
+    dtype: str = 'float32'
+    rng: jax.random.PRNGKey = jax.random.PRNGKey(42)
+
+    @nn.compact
+    def __call__(self, x):
+        """
+        Run Linear Layer.
+        Args:
+            x (Tensor): input tensor of shape [N, in_features].
+        Returns:
+            (tensor): Output tensor of shape [N, out_features].
+        """
+        w_shape = [self.in_features, self.out_features]
+        params = get_weight(w_shape, self.lr_multiplier, self.use_bias, self.param_dict, self.layer_name, self.rng, self.dtype)
+        if self.use_bias:
+            w, b = params
+        else:
+            w = params
+        w = self.param(name='weight', init_fn=lambda *_: w)
+        w = equalize_lr_weights(w, self.lr_multiplier)
+        x = jnp.matmul(x, w)
+        if self.use_bias:
+            b = self.param(name='bias', init_fn=lambda *_: b)
+            b = equalize_lr_bias(b, self.lr_multiplier)
+            x += b
+            x += self.bias_init
+
+        x = apply_activation(x, self.activation)
+        return x
+
+
+def linear_layer(x, w, b, activation='Linear'):
+    x = jnp.matmul(x, w)
+    if b is not None:
+        x += b
+    x = apply_activation(x, activation)
+    return x    

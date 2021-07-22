@@ -327,3 +327,23 @@ def upsample_conv_2d(x, w, k=None, factor=2, gain=1, padding=0):
     return x
 
 
+def conv2d(x, w, up=False, down=False, resample_kernel=None, padding=0):
+    assert not (up and down), 'up and down cannot be both True'
+    kernel = w.shape[0]
+    assert w.shape[1] == kernel, 'w.shape[1] must be equal to kernel'
+    assert kernel >= 1 and kernel % 2 == 1
+
+    num_groups = x.shape[3] // w.shape[2]
+    w = w.astype(x.dtype)
+    if up:
+        x = upsample_conv_2d(x, w, k=resample_kernel, padding=padding)
+    elif down:
+        x = conv_downsample_2d(x, w, k=resample_kernel, padding=padding)
+    else:
+        padding_mode = {0: 'SAME', -(kernel // 2): 'VALID'}[padding]
+        x = jax.lax.conv_general_dilated(x, w,
+                                         window_strides=(1, 1),
+                                         padding=padding_mode,
+                                         dimension_numbers=nn.Linear._conv_dimension_numbers(x.shape))
+                                         feature_group_count=num_groups)
+    return x

@@ -218,3 +218,47 @@ def linear_layer(x, w, b, activation='Linear'):
         x += b
     x = apply_activation(x, activation)
     return x    
+
+
+def conv_downsample_2d(x, w, k=None, factor=2, gain=1, padding=0):
+    """Fused downsample convolution.
+    Padding is performed only at beginning, not between operations.
+    The fused op is more efficient than performing the same calculation
+    using tf ops. It supports gradients of arbitrary order.
+    
+    Args:
+        x (tensor): Input of shape [N, H, W, C].
+        w (tensor): Weight of shape [filterH, filterW, inChannels, outChannels].
+                    grouped conv can be performed by inChannels = x.shape[0] // numGroups.
+        k (tensor): FIR filter of shape [firH, firW] or [firN].
+        factor (int): Downsample factor.
+        gain (float): Scaling factor for signal magnitude.
+        padding (int): Number of pixels to pad on each side.
+    
+    Returns:
+        (tensor): Output of shape [N, H // factor, W // factor, C].
+    """
+    assert isinstance(factor, int) and factor >= 1, 'factor must be an integer >= 1'
+    assert isinstance(padding, int), 'padding must be an integer'
+
+    # check weight shape.
+    ch, cw, _intC, _outC = w.shape
+    assert ch == cw
+
+    # setup filter kernel.
+    k = setup_filter(k, gain)
+    assert k.shape[0] == k.shape[1]
+
+    # execute.
+    pad0 = (k.shape[0] - factor + cw) // 2 + padding * factor
+    pad1 = (k.shape[0] - factor + ch - 1) // 2 + padding * factor
+    x = upfirdn2d(x, w, k, factor, (pad0, pad0, pad1, pad1))
+
+    x = jax.lax.conv_general_dilated(x, w,
+                                     window_strides=(factor, factor),
+                                     padding='VALID',
+                                     dimension_numbers=nn.Linear._conv_dimension_numbers(x.shape))
+
+    return x
+
+

@@ -347,3 +347,44 @@ def conv2d(x, w, up=False, down=False, resample_kernel=None, padding=0):
                                          dimension_numbers=nn.Linear._conv_dimension_numbers(x.shape),
                                          feature_group_count=num_groups)
     return x
+
+
+def modulated_conv_layer(x, w, s, fmaps, kernel, up=False, down=False, demodulate=True,
+                         resample_kernel=None, fused_modconv=False):
+    assert not (up and down), 'up and down cannot be both True'
+    assert kernel >= 1 and kernel % 2 == 1
+    
+    # get weight.
+    wshape = (kernel, kernel, x.shape[3], fmaps)
+    if x.dtype == 'float16' and not fused_modconv and demodulate:
+        w *= jnp.sqrt(1 / jnp.prod(wshape[:-1])) / jnp.max(jnp.abs(w), axis=(0, 1, 2))
+    ww = w[jnp.newaxis] # [BkkIO] introduce minibatch dimension.
+
+    # modulate.
+    if x.dtype == 'float16' and not fused_modconv and demodulate:
+        s *= 1 / jnp.max(jnp.abs(s))
+    ww *= s[:, jnp.newaxis, jnp.newaxis, :, jnp.newaxis].astype(x.dtype) # [BkkIO] introduce minibatch dimension.
+
+    # Demodulate
+    if demodulate:
+        d = jax.lax.rsqrt(jnp.sum(ww**2, axis=(1, 2, 3))+1e-8)
+        ww *= d[:, jnp.newaxis, jnp.newaxis, jnp.newaxis, :]
+    
+    # Reshape
+    if fused_modconv:
+        x = jnp.transpose(x, (0, 3, 1, 2))
+        x = jnp.reshape(x, (1, -1, x.shape[2], x.shape[3]))
+        x = jnp.transpose(x, (0, 2, 3, 1))
+        w = jnp.reshape(jnp.transpose(ww, (1, 2, 4, 0, 4)), (w.shape[1], w.shape[2], w.shape[3], -1))
+    else:
+        x *= s[:, jnp.newaxis, jnp.newaxis].astype(x.dtype)
+
+    x = conv2d(x, w.astype(x.dtype), up=up, down=down, resample_kernel=resample_kernel)
+
+    if fused_modconv:
+        x = jnp.transpose(x, (0, 3, 1, 2))
+        x = jnp.reshape(x, (-1, fmaps, x.shape[2], x.shape[3]))
+        x = jnp.transpose(x, (0, 2, 3, 1))
+    elif demodulate:
+        x *= d[:, jnp.newaxis, jnp.newaxis].astype(x.dtype)
+    return x

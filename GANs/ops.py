@@ -356,7 +356,7 @@ def modulated_conv_layer(x, w, s, fmaps, kernel, up=False, down=False, demodulat
     
     # get weight.
     wshape = (kernel, kernel, x.shape[3], fmaps)
-    if x.dtype == 'float16' and not fused_modconv and demodulate:
+    if x.dtype.name == 'float16' and not fused_modconv and demodulate:
         w *= jnp.sqrt(1 / jnp.prod(wshape[:-1])) / jnp.max(jnp.abs(w), axis=(0, 1, 2))
     ww = w[jnp.newaxis] # [BkkIO] introduce minibatch dimension.
 

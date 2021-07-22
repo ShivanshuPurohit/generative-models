@@ -344,6 +344,6 @@ def conv2d(x, w, up=False, down=False, resample_kernel=None, padding=0):
         x = jax.lax.conv_general_dilated(x, w,
                                          window_strides=(1, 1),
                                          padding=padding_mode,
-                                         dimension_numbers=nn.Linear._conv_dimension_numbers(x.shape))
+                                         dimension_numbers=nn.Linear._conv_dimension_numbers(x.shape),
                                          feature_group_count=num_groups)
     return x

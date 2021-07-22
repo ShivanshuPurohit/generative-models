@@ -291,7 +291,7 @@ def upsample_conv_2d(x, w, k=None, factor=2, gain=1, padding=0):
     # fast path for 1x1 convolution.
     if cw == 1 and ch == 1:
         x = jax.lax.conv_general_dilated(x, w,
-                                         window_strides=(factor, factor),
+                                         window_strides=(1, 1),
                                          padding='VALID',
                                          dimension_numbers=nn.Linear._conv_dimension_numbers(x.shape))
         k = setup_filter(k, gain=gain*(factor**2))

@@ -361,7 +361,7 @@ def modulated_conv_layer(x, w, s, fmaps, kernel, up=False, down=False, demodulat
     ww = w[jnp.newaxis] # [BkkIO] introduce minibatch dimension.
 
     # modulate.
-    if x.dtype == 'float16' and not fused_modconv and demodulate:
+    if x.dtype.name == 'float16' and not fused_modconv and demodulate:
         s *= 1 / jnp.max(jnp.abs(s))
     ww *= s[:, jnp.newaxis, jnp.newaxis, :, jnp.newaxis].astype(x.dtype) # [BkkIO] introduce minibatch dimension.
 

@@ -389,6 +389,7 @@ def modulated_conv_layer(x, w, s, fmaps, kernel, up=False, down=False, demodulat
         x *= d[:, jnp.newaxis, jnp.newaxis].astype(x.dtype)
     return x
 
+
 def _deconv_output_length(input_length, filter_size, padding, output_padding=None,
                           stride=0, dilation=1):
     """Determines the output length of a transposed convolution given the input

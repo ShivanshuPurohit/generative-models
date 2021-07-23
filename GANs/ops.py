@@ -454,3 +454,12 @@ def _compute_adjusted_padding(input_size, output_size, kernel_size, stride, padd
     pad_before = kernel_size - 1 - total_padding
     pad_after = padded_out_size - expanded_input_size - pad_before
     return (pad_before, pad_after)
+
+
+def _flip_axes(x, axes):
+    """
+    Flip ndarray 'x' along each axis specified in axes tuple.
+    """
+    for axis in axes:
+        x = jnp.flip(x, axis)
+    return x

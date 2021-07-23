@@ -430,3 +430,27 @@ def _deconv_output_length(input_length, filter_size, padding, output_padding=Non
             total_pad = padding[0] + padding[1]
     out_length = ((input_length - 1) * stride + filter_size - total_pad + output_padding)
     return out_length
+
+
+def _compute_adjusted_padding(input_size, output_size, kernel_size, stride, padding, dilation=1):
+    """Computes adjusted padding for desired ConvTranspose `output_size`."""
+    kernel_size = (kernel_size -1) * dilation + 1
+    if padding == 'SAME':
+        expected_input_size = (output_size + stride - 1) // stride
+        if input_size != expected_input_size:
+            raise ValueError(f'input_size must be {expected_input_size} when padding is SAME')
+        padding_needed = max(0, (input_size-1)*stride + kernel_size - output_size)
+        total_padding = padding_needed // 2
+    elif padding == 'VALID':
+        expected_input_size = (output_size - kernel_size + stride) // stride
+        if input_size != expected_input_size:
+            raise ValueError(f'input_size must be {expected_input_size} when padding is VALID')
+        total_padding = 0
+    else:
+        total_padding = padding[0]
+    
+    expanded_input_size = (input_size - 1) * stride + 1
+    padded_out_size = output_size + kernel_size - 1
+    pad_before = kernel_size - 1 - total_padding
+    pad_after = padded_out_size - expanded_input_size - pad_before
+    return (pad_before, pad_after)

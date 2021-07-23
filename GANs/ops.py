@@ -388,3 +388,44 @@ def modulated_conv_layer(x, w, s, fmaps, kernel, up=False, down=False, demodulat
     elif demodulate:
         x *= d[:, jnp.newaxis, jnp.newaxis].astype(x.dtype)
     return x
+
+def _deconv_output_length(input_length, filter_size, padding, output_padding=None,
+                          stride=0, dilation=1):
+    """Determines the output length of a transposed convolution given the input
+    length.
+    Args:
+        input_length (int)
+        filter_size (int)
+        padding (str): 'SAME', 'VALID', or a 2-integer tuple.
+        output_padding (int): Amoubt of padding along the output dim. Can
+                              be set to `None` in which case output length is
+                              inferred.
+        stride (int)
+        dilation (int)
+    Returns:
+        output_length (int)
+    """
+    if input_length is None:
+        return None
+    
+    # Get filter dilated kernel size
+    filter_size = filter_size + (filter_size - 1) * (dilation - 1)
+
+    # Infer length if output padding is None, else compute exact length
+    if output_padding is None:
+        if padding == 'SAME':
+            out_length = input_length * stride
+        elif padding == 'VALID':
+            out_length = input_length * stride + max(filter_size - stride, 0)
+        else:
+            out_length = ((input_length -1) * stride + filter_size - padding[0] - padding[1])
+    else:
+        if padding == 'SAME':
+            pad = filter_size // 2
+            total_pad = pad * 2
+        elif padding == 'VALID':
+            total_pad = 0
+        else:
+            total_pad = padding[0] + padding[1]
+    out_length = ((input_length - 1) * stride + filter_size - total_pad + output_padding)
+    return out_length

@@ -91,7 +91,7 @@ class DiscriminatorLayer(nn.Module):
         else:
             w = ops.get_weight(w_shape, self.lr_multiplier, self.use_bias, self.param_dict, self.layer_name, self.rng)
         w = self.param(name='weight', init_fn=lambda *_: w)
-        w = ops.equalize_lr_weight(w, self.lr_multiplier)
+        w = ops.equalize_lr_weight(w, self.lr_mult)
         if self.use_bias:
             b = self.param(name='bias', init_fn=lambda *_: b)    
             b = ops.equalize_lr_bias(b, self.lr_multiplier)

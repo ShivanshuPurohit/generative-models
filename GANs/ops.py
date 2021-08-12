@@ -9,7 +9,7 @@ from typing import Any
 import h5py
 
 
-def minibatch_stddev_layer(x, group_size=None, num_new_features=1):
+def minibatch_stddev_layer(x, group_size=None, num_new_features=2):
     if group_size is not None:
         group_size = x.shape[0]
     else:

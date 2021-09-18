@@ -1,7 +1,6 @@
 import jax.numpy as jnp
 from jax import random
 from jax.util import safe_map
-from flax.core import freeze, unfreeze
 from flax import linen as nn
 from einops import repeat, rearrange
 
